@@ -25,7 +25,7 @@ def find_bounding_box(img):
     # rl = list()
 
     # detect faces
-    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.3, minNeighbors=2)
+    faces = face_cascade.detectMultiScale(gray, 1.2, 2)
 
     if len(faces) == 0:
         return None
@@ -51,7 +51,8 @@ def find_bounding_box(img):
 # col_start, col_end are x axis values where bounding boxes do not intersect
 # left_box indicates which bb is to the left of the other
 def bounding_box_far(bb1, bb2, width):
-    width_ratio_threshold = 0.1
+    width_ratio_threshold = 0.2
+    width_ratio_min = 0.05
     x_top_left1, y_top_left1, x_bottom_right1, y_bottom_right1 = bb1
     x_top_left2, y_top_left2, x_bottom_right2, y_bottom_right2 = bb2
 
@@ -70,16 +71,17 @@ def bounding_box_far(bb1, bb2, width):
         distance = x_top_left1 - x_bottom_right2
         left_box = 1
     else:  # subjects are overlapping
-        return False, None, None, None
+        return 0, None, None, None
 
     distance_ratio = float(distance) / float(width)
-    if VERBOSE: print
-    "distance ratio between image subjects is: " + str(
-        distance_ratio)
+    if VERBOSE:
+        print "distance ratio between image subjects is: " + str(distance_ratio)
     if distance_ratio > width_ratio_threshold:
-        return True, col_start, col_end, left_box
+        return 1, col_start, col_end, left_box
+    elif distance_ratio > width_ratio_min:
+        return 0, None, None, None
     else:  # subjects are too close to each other
-        return False, None, None, None
+        return -1, None, None, None
 
 
 def alpha_blend(img_left, img_right, col_start, col_end):
@@ -153,9 +155,9 @@ def find_keypoint_matches(img1, img2):
 
     matches = bf.match(des_img1, des_img2)
     sorted_matches = sorted(matches, key=lambda x: x.distance, reverse=True)
-    if VERBOSE: print
-    'found and sorted ' + str(
-        len(matches)) + ' matches by distance'
+    if VERBOSE:
+        print 'found and sorted ' + str(
+            len(matches)) + ' matches by distance'
     return sorted_matches, kp_img1, kp_img2
 
 
@@ -171,9 +173,9 @@ def prune_keypoint_matches_by_distance(matches):
     for m in matches:
         if m.distance < threshold:
             pruned_matches.append(m)
-    if VERBOSE: print
-    'number of matches after distance pruning: ' + str(
-        len(pruned_matches))
+    if VERBOSE:
+        print 'number of matches after distance pruning: ' + str(
+            len(pruned_matches))
     return pruned_matches
 
 
@@ -234,10 +236,8 @@ def swap_fore_back(bb_fore_face, bb_back_face):
     area_back = w_back * h_back
 
     if VERBOSE:
-        print
-        'area of head in fore img: ' + str(area_fore)
-        print
-        'area of head in back img: ' + str(area_back)
+        print 'area of head in fore img: ' + str(area_fore)
+        print 'area of head in back img: ' + str(area_back)
 
     # NOTE: back_image is actually the foreground, fore_image is background
     if area_back < area_fore:
@@ -300,9 +300,23 @@ def blend_cropped_image(background_img, input_img):
     # show('final result', imresize(merged_img,scalefactor))
     return merged_img
 
+def get_result_image_from_homography(fore_image, back_image, matches, kp_fore,
+                                     kp_back,
+                                     col_start, col_end, left_box, ap_H=False):
+    H = []
+    if ap_H:
+        H, mask = calculate_homography(matches, kp_fore, kp_back)
+        warped_back = cv2.warpPerspective(back_image, H, (
+            fore_image.shape[:2][1], fore_image.shape[:2][0]))
+    else:
+        warped_back = back_image
+    if left_box:  # figure out which is to the left of the other
+        warped_back, fore_image = fore_image, warped_back
+    blended_image = alpha_blend(fore_image, warped_back, col_start, col_end)
+    if ap_H:
+        blended_image = crop_image(blended_image, H)
+    return blended_image
 
-# foreground image will be the query image/object
-# background image will be the train image/scene
 
 def main(img_fg, img_bg, res_fname):
     # set parameters
@@ -310,7 +324,7 @@ def main(img_fg, img_bg, res_fname):
     fore_image = cv2.imread(img_fg)
     back_image = cv2.imread(img_bg)
     # color correction
-    fore_image, back_image = colorcorrect(fore_image, back_image)
+    # fore_image, back_image = colorcorrect(fore_image, back_image)
     # find body bounding box
     bb_fore, bb_fore_face = find_bounding_box(fore_image)
     bb_back, bb_back_face = find_bounding_box(back_image)
@@ -331,10 +345,14 @@ def main(img_fg, img_bg, res_fname):
     # show_bounding_boxes(fore_image, back_image,bb_fore,bb_fore_face, bb_back, bb_back_face)
     rows, cols, channels = fore_image.shape
     far, col_start, col_end, left_box = bounding_box_far(bb_fore, bb_back, cols)
-    if far:
+    if far == -1:
         if VERBOSE:
-            print
-            'Image subjects are far apart, can use panorama flow'
+            print 'Images are not proper'
+        raise ValueError
+
+    if far == 1:
+        if VERBOSE:
+            print 'Image subjects are far apart, can use panorama flow'
         # treat as a 2 picture panoramic
         matches, kp_fore, kp_back = find_keypoint_matches(fore_image,
                                                           back_image)
@@ -343,24 +361,17 @@ def main(img_fg, img_bg, res_fname):
                                                          bb_fore, kp_back,
                                                          bb_back)
         # display_keypoint_matches(fore_image, back_image, kp_fore, kp_back, matches)
-        H, mask = calculate_homography(matches, kp_fore, kp_back)
-        warped_back = cv2.warpPerspective(back_image, H, (
-            fore_image.shape[:2][1], fore_image.shape[:2][0]))
 
-        # concat_image = np.concatenate((fore_image, warped_back), axis=1)
-        # show('warped back image', imresize(concat_image,scalefactor))
-        # do alpha blending
-        if left_box:  # figure out which is to the left of the other
-            warped_back, fore_image = fore_image, warped_back
-
-        blended_image = alpha_blend(fore_image, warped_back, col_start, col_end)
+        res_img = get_result_image_from_homography(fore_image, back_image,
+                                                   matches, kp_fore,
+                                                   kp_back, col_start, col_end,
+                                                   left_box)
         # show('blended image', imresize(blended_image,scalefactor))
-        cropped_image = crop_image(blended_image, H)
-        cv2.imwrite(res_fname, cropped_image)
+        # cv2.imwrite(res_fname, cropped_image)
+        cv2.imwrite(res_fname, res_img)
     else:
         if VERBOSE:
-            print
-            'Image subjects too close together, need to do segmentation.'
+            print 'Image subjects too close together, need to do segmentation.'
         matches, kp_fore, kp_back = find_keypoint_matches(fore_image,
                                                           back_image)
         # display_keypoints(fore_image, back_image, kp_fore, kp_back)

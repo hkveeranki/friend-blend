@@ -31,8 +31,8 @@ print('fg done')
 cnt2 = extract_frames('video_bg')
 print('bg done')
 res = []
-cnt = 1
-
+cnt = 0
+fl = 0
 for i in tqdm(range(1, min(cnt1, cnt2))):
     j = str(i)
     print(j)
@@ -41,9 +41,8 @@ for i in tqdm(range(1, min(cnt1, cnt2))):
         main(img_bg=fra_dir + '/video_fg_' + j + '.jpg',
              img_fg=fra_dir + '/video_bg_' + j + '.jpg',
              res_fname=out_dir + '/result_' + str(cnt) + '.jpg')
-
-    except TypeError:
+    except Exception as e:
         cnt -= 1
+        fl += 1
         pass
-
-video_maker.main(out_dir, 'jpg', 'result.avi')
+print 'Frames lost:', fl
