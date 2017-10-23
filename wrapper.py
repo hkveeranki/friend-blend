@@ -33,16 +33,20 @@ print('bg done')
 res = []
 cnt = 0
 fl = 0
+width = 480
+height = 640
 for i in tqdm(range(1, min(cnt1, cnt2))):
     j = str(i)
     print(j)
     try:
         cnt += 1
-        main(img_bg=fra_dir + '/video_fg_' + j + '.jpg',
-             img_fg=fra_dir + '/video_bg_' + j + '.jpg',
+        main(img_bg=fra_dir + '/video_bg_' + j + '.jpg',
+             img_fg=fra_dir + '/video_fg_' + j + '.jpg',
              res_fname=out_dir + '/result_' + str(cnt) + '.jpg')
     except Exception as e:
         cnt -= 1
         fl += 1
         pass
 print 'Frames lost:', fl
+
+video_maker.main('output', 'jpg', 'result.avi')

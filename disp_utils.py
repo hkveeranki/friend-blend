@@ -4,8 +4,8 @@ Image Display Functions
 import cv2
 import numpy as np
 import copy
-from project.main import scale_factor
-from project.process_utils import imresize
+from main import *
+from process_utils import imresize
 
 
 def show(name, img):

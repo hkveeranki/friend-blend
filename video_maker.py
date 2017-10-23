@@ -22,8 +22,9 @@ def main(dir_path, ext, output):
     height, width, channels = frame.shape
 
     # Define the codec and create VideoWriter object
-    fourcc = cv2.VideoWriter_fourcc(*'XVID')  # Be sure to use lower case
-    out = cv2.VideoWriter(output, fourcc, 20, (width, height))
+    fourcc = cv2.VideoWriter_fourcc(*'XVID')
+    # fourcc = 0x000000021 # use this for mp4
+    out = cv2.VideoWriter(output, fourcc, 24, (width, height))
 
     for image in images:
         image_path = os.path.join(dir_path, image)

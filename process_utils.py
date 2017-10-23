@@ -57,3 +57,24 @@ def colorcorrect(img1, img2):
     # show('color corrected back image', concat_image)
 
     return fore_corr, back_corr
+
+
+def swap_fore_back(bb_fore_face, bb_back_face):
+    """
+    Make sure foreground image is the one with the bigger head
+    :param bb_fore_face: bounding box of foreground face
+    :param bb_back_face: bounding box of background face
+    :return: True if fore img and back img need to be swapped False otherwise 
+    """
+    h_fore = bb_fore_face[3] - bb_fore_face[1]
+    w_fore = bb_fore_face[2] - bb_fore_face[0]
+    h_back = bb_back_face[3] - bb_back_face[1]
+    w_back = bb_back_face[2] - bb_back_face[0]
+    area_fore = w_fore * h_fore
+    area_back = w_back * h_back
+
+    # NOTE: back_image is actually the foreground, fore_image is background
+    if area_back < area_fore:
+        return True
+    else:
+        return False

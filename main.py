@@ -1,8 +1,11 @@
+import random
+
 import cv2
 import numpy as np
 import grab_cut
 import local_config as config
 
+from disp_utils import show_bounding_boxes, show
 from process_utils import colorcorrect, imresize
 
 VERBOSE = True
@@ -15,36 +18,50 @@ FACE_DETECTION_XML = config.opencv['FACE_DETECTION_XML']
 def find_bounding_box(img):
     """
     Find the bounding box in the given image
+    :param face_cascade: cascaded classifier for the image
     :param img: input image
     :return: details of the bounding box
     """
-    face_cascade = cv2.CascadeClassifier(OPENCV_PATH + FACE_DETECTION_XML)
+    # Seed for random ness
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
     # lw = list()
     # rl = list()
 
     # detect faces
-    faces = face_cascade.detectMultiScale(gray, 1.2, 2)
+    random.seed(17)
+    np.random.seed(17)
+    face_cascade = cv2.CascadeClassifier(OPENCV_PATH + FACE_DETECTION_XML)
+    faces = face_cascade.detectMultiScale(gray, 1.1, 2)
 
     if len(faces) == 0:
-        return None
+        # try with more lenient model
+        faces = face_cascade.detectMultiScale(gray, 1.2, 1)
+        if len(faces) == 0:
+            from wrapper import fl
+            cv2.imwrite('bad_img_' + str(fl) + '.jpg', img)
+            show('bad image', img)
+            return None, None, None, None
+
     if len(faces) == 1:
         x, y, w, h = faces[0]
-        return (x - int(w * 1), y - int(h * 1), x + int(w * 2), img.shape[0]), (
-            x, y, x + w, y + h)
-    if len(faces) > 1:
-        # assume biggest box is the target face
-        biggest_face = 0
-        biggest_face_idx = 0
-        for i in range(0, len(faces)):
+    else:
+        print 'more faces'
+        # Assume smallest box is the target face
+        # Since persons are smaller in the images we are targeting for videos
+        print faces[0]
+        __, _, _w, _h = faces[0]
+        smallest_face = _w * _h
+        smallest_face_idx = 0
+        for i in range(1, len(faces)):
+            print faces[i]
             x, y, w, h = faces[i]
-            if (w * h) > biggest_face:
-                biggest_face = w * h
-                biggest_face_idx = i
-        x, y, w, h = faces[biggest_face_idx]
-        return (x - int(w * 1), y - int(h * 1), x + int(w * 2), img.shape[0]), (
-            x, y, x + w, y + h)
+            if w * h < smallest_face:
+                smallest_face = w * h
+                smallest_face_idx = i
+        x, y, w, h = faces[smallest_face_idx]
+    return (x - int(w * 1), y - int(h * 1), x + int(w * 2), img.shape[0]), (
+        x, y, x + w, y + h)
 
 
 # Return True if bounding boxes are far apart enough
@@ -194,13 +211,15 @@ def prune_keypoint_matches_by_bounding_box(matches, kp_fore, bb_fore, kp_back,
     pruned_matches = []
     for m in matches:
         kp = kp_fore[m.queryIdx]
-        if not keypoint_outside_bbox(kp, bb_fore): continue
-        if not keypoint_outside_bbox(kp,
-                                     bb_back): continue  # should actually be homography on bb_back
+        if not keypoint_outside_bbox(kp, bb_fore):
+            continue
+        if not keypoint_outside_bbox(kp, bb_back):
+            continue
         kp = kp_back[m.trainIdx]
-        if not keypoint_outside_bbox(kp, bb_back): continue
-        if not keypoint_outside_bbox(kp,
-                                     bb_fore): continue  # should actually be homography on bb_fore
+        if not keypoint_outside_bbox(kp, bb_back):
+            continue
+        if not keypoint_outside_bbox(kp, bb_fore):
+            continue
         pruned_matches.append(m)
     if VERBOSE:
         print 'number of matches after bounding box pruning: ' + str(
@@ -210,7 +229,7 @@ def prune_keypoint_matches_by_bounding_box(matches, kp_fore, bb_fore, kp_back,
 
 def calculate_homography(matches, kp_obj, kp_scene):
     """
-    Caluclate the homography matchings
+    Calculate the homography matching
     """
     obj = []
     scene = []
@@ -219,31 +238,6 @@ def calculate_homography(matches, kp_obj, kp_scene):
         scene.append(kp_scene[m.trainIdx].pt)
     H = cv2.findHomography(np.array(scene), np.array(obj), cv2.RANSAC)
     return H
-
-
-def swap_fore_back(bb_fore_face, bb_back_face):
-    """
-    Make sure foreground image is the one with the bigger head
-    :param bb_fore_face: bounding box of foreground face
-    :param bb_back_face: bounding box of background face
-    :return: True if fore img and back img need to be swapped False otherwise 
-    """
-    h_fore = bb_fore_face[3] - bb_fore_face[1]
-    w_fore = bb_fore_face[2] - bb_fore_face[0]
-    h_back = bb_back_face[3] - bb_back_face[1]
-    w_back = bb_back_face[2] - bb_back_face[0]
-    area_fore = w_fore * h_fore
-    area_back = w_back * h_back
-
-    if VERBOSE:
-        print 'area of head in fore img: ' + str(area_fore)
-        print 'area of head in back img: ' + str(area_back)
-
-    # NOTE: back_image is actually the foreground, fore_image is background
-    if area_back < area_fore:
-        return True
-    else:
-        return False
 
 
 def blend_cropped_image(background_img, input_img):
@@ -300,90 +294,79 @@ def blend_cropped_image(background_img, input_img):
     # show('final result', imresize(merged_img,scalefactor))
     return merged_img
 
+
 def get_result_image_from_homography(fore_image, back_image, matches, kp_fore,
                                      kp_back,
-                                     col_start, col_end, left_box, ap_H=False):
-    H = []
-    if ap_H:
-        H, mask = calculate_homography(matches, kp_fore, kp_back)
-        warped_back = cv2.warpPerspective(back_image, H, (
-            fore_image.shape[:2][1], fore_image.shape[:2][0]))
-    else:
-        warped_back = back_image
+                                     col_start, col_end, left_box):
+    H, mask = calculate_homography(matches, kp_fore, kp_back)
+    warped_back = cv2.warpPerspective(back_image, H, (
+        fore_image.shape[:2][1], fore_image.shape[:2][0]))
     if left_box:  # figure out which is to the left of the other
         warped_back, fore_image = fore_image, warped_back
     blended_image = alpha_blend(fore_image, warped_back, col_start, col_end)
-    if ap_H:
-        blended_image = crop_image(blended_image, H)
+    blended_image = crop_image(blended_image, H)
     return blended_image
 
 
 def main(img_fg, img_bg, res_fname):
     # set parameters
     # read images
+    cnt = 0
     fore_image = cv2.imread(img_fg)
     back_image = cv2.imread(img_bg)
     # color correction
-    # fore_image, back_image = colorcorrect(fore_image, back_image)
+    fore_image, back_image = colorcorrect(fore_image, back_image)
     # find body bounding box
     bb_fore, bb_fore_face = find_bounding_box(fore_image)
     bb_back, bb_back_face = find_bounding_box(back_image)
 
     # swap fore and back images if necessary (fore has bigger body)
-    if swap_fore_back(bb_fore_face, bb_back_face):
-        tmp = fore_image  # due to shallow copy
-        fore_image = back_image
-        back_image = tmp
+    # if swap_fore_back(bb_fore_face, bb_back_face):
+    #     tmp = fore_image  # due to shallow copy
+    #     fore_image = back_image
+    #     back_image = tmp
+    #
+    #     tmp = bb_fore_face
+    #     bb_fore_face = bb_back_face
+    #     bb_back_face = tmp
+    #
+    #     tmp = bb_fore  # due to shallow copy
+    #     bb_fore = bb_back
+    #     bb_back = tmp
 
-        tmp = bb_fore_face
-        bb_fore_face = bb_back_face
-        bb_back_face = tmp
-
-        tmp = bb_fore  # due to shallow copy
-        bb_fore = bb_back
-        bb_back = tmp
-    # show_bounding_boxes(fore_image, back_image,bb_fore,bb_fore_face, bb_back, bb_back_face)
     rows, cols, channels = fore_image.shape
     far, col_start, col_end, left_box = bounding_box_far(bb_fore, bb_back, cols)
     if far == -1:
-        if VERBOSE:
-            print 'Images are not proper'
+        show_bounding_boxes(fore_image, back_image, bb_fore, bb_fore_face,
+                            bb_back, bb_back_face)
+        from wrapper import fl
+        cv2.imwrite('bad_bg_' + str(fl) + '.jpg', back_image)
+        cv2.imwrite('bad_fg_' + str(fl) + '.jpg', fore_image)
+        cnt += 1
         raise ValueError
 
+    matches, kp_fore, kp_back = find_keypoint_matches(fore_image,
+                                                      back_image)
+    matches = prune_keypoint_matches_by_distance(matches)
+    matches = prune_keypoint_matches_by_bounding_box(matches, kp_fore,
+                                                     bb_fore, kp_back,
+                                                     bb_back)
+    # display_keypoint_matches(fore_image, back_image, kp_fore, kp_back, matches)
     if far == 1:
         if VERBOSE:
             print 'Image subjects are far apart, can use panorama flow'
         # treat as a 2 picture panoramic
-        matches, kp_fore, kp_back = find_keypoint_matches(fore_image,
-                                                          back_image)
-        matches = prune_keypoint_matches_by_distance(matches)
-        matches = prune_keypoint_matches_by_bounding_box(matches, kp_fore,
-                                                         bb_fore, kp_back,
-                                                         bb_back)
-        # display_keypoint_matches(fore_image, back_image, kp_fore, kp_back, matches)
-
         res_img = get_result_image_from_homography(fore_image, back_image,
                                                    matches, kp_fore,
                                                    kp_back, col_start, col_end,
                                                    left_box)
-        # show('blended image', imresize(blended_image,scalefactor))
-        # cv2.imwrite(res_fname, cropped_image)
         cv2.imwrite(res_fname, res_img)
     else:
         if VERBOSE:
             print 'Image subjects too close together, need to do segmentation.'
-        matches, kp_fore, kp_back = find_keypoint_matches(fore_image,
-                                                          back_image)
-        # display_keypoints(fore_image, back_image, kp_fore, kp_back)
-        matches = prune_keypoint_matches_by_distance(matches)
-        matches = prune_keypoint_matches_by_bounding_box(matches, kp_fore,
-                                                         bb_fore, kp_back,
-                                                         bb_back)
-        # display_keypoint_matches(fore_image, back_image, kp_fore, kp_back, matches)
         H, mask = calculate_homography(matches, kp_fore, kp_back)
         warped_back = cv2.warpPerspective(back_image, H, (
             fore_image.shape[:2][1], fore_image.shape[:2][0]))
         warped_back_cut = grab_cut.grab_cut(warped_back)
         blended_image = blend_cropped_image(fore_image, warped_back_cut)
-        # show('blended image', imresize(blended_image, scalefactor))
         cv2.imwrite(res_fname, imresize(blended_image, scale_factor))
