@@ -117,9 +117,10 @@ for x,y,w,h in found_filtered:
     face_cascade = cv2.CascadeClassifier("/home/vinamra/Downloads/opencv-master/" + "data/haarcascades/haarcascade_frontalface_default.xml")
     gray = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
     faces = face_cascade.detectMultiScale(gray, 1.3, 2)
+    print len(faces)
     #now we have list of face dimentions for a single body in the image
     #choose the largest one and update max
-    flag,area,xx,yy,ww,hh = largestt(faces)
+    fla,area,xx,yy,ww,hh = largestt(faces)
     if area > max_area:
         max_area = area
         max_index = index
@@ -127,14 +128,14 @@ for x,y,w,h in found_filtered:
         myy = yy
         mww = ww
         mhh = hh
+        flag= fla
     index += 1
 #now target box is found_filtered[max_index] and sure features rect is m__
 #now give this to grabcut. Remove haar from grabcut code. make sure flag is 1
 
-
-imgg=copy.deepcopy(img)
-bounding_box= find_bounding_box_new_v(found_filtered,max_index, mxx,myy,mww,mhh,imgg)
-
+if flag == 1:
+    imgg=copy.deepcopy(img)
+    bounding_box= find_bounding_box_new_v(found_filtered,max_index, mxx,myy,mww,mhh,imgg)
 
 d,f,g,h=found_filtered[max_index]
 draw_detections1(img,d,f,g,h)
