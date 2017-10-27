@@ -2,7 +2,7 @@
 Processing utilities
 """
 import cv2
-
+import numpy as np
 
 def imresize(im, scale):
     """
@@ -14,6 +14,18 @@ def imresize(im, scale):
     imout = cv2.resize(im, (int(scale * im.shape[1]), int(scale * im.shape[0])))
     return imout
 
+
+def adjust_gamma(image, gamma=1.35):
+    """
+    Apply gamma correction
+    :param image: input image
+    :param gamma: gamma value
+    :return: corrected image
+    """
+    invGamma = 1.0 / gamma
+    table = np.array([((i / 255.0) ** invGamma) * 255
+                      for i in np.arange(0, 256)]).astype("uint8")
+    return cv2.LUT(image, table)
 
 # do a possible color correction
 def colorcorrect(img1, img2):

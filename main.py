@@ -4,9 +4,10 @@ import cv2
 import numpy as np
 import grab_cut
 import local_config as config
+import imutils
 
 from disp_utils import show_bounding_boxes, show
-from process_utils import colorcorrect, imresize
+from process_utils import colorcorrect, imresize, adjust_gamma
 
 VERBOSE = True
 scale_factor = 1
@@ -25,43 +26,16 @@ def find_bounding_box(img):
     # Seed for random ness
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    # lw = list()
-    # rl = list()
-
-    # detect faces
-    random.seed(17)
-    np.random.seed(17)
-    face_cascade = cv2.CascadeClassifier(OPENCV_PATH + FACE_DETECTION_XML)
-    faces = face_cascade.detectMultiScale(gray, 1.1, 2)
-
-    if len(faces) == 0:
-        # try with more lenient model
-        faces = face_cascade.detectMultiScale(gray, 1.2, 1)
-        if len(faces) == 0:
-            from wrapper import fl
-            cv2.imwrite('bad_img_' + str(fl) + '.jpg', img)
-            show('bad image', img)
-            return None, None, None, None
-
-    if len(faces) == 1:
-        x, y, w, h = faces[0]
-    else:
-        print 'more faces'
-        # Assume smallest box is the target face
-        # Since persons are smaller in the images we are targeting for videos
-        print faces[0]
-        __, _, _w, _h = faces[0]
-        smallest_face = _w * _h
-        smallest_face_idx = 0
-        for i in range(1, len(faces)):
-            print faces[i]
-            x, y, w, h = faces[i]
-            if w * h < smallest_face:
-                smallest_face = w * h
-                smallest_face_idx = i
-        x, y, w, h = faces[smallest_face_idx]
-    return (x - int(w * 1), y - int(h * 1), x + int(w * 2), img.shape[0]), (
-        x, y, x + w, y + h)
+    hog = cv2.HOGDescriptor()
+    hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
+    (rects, weights) = hog.detectMultiScale(img, winStride=(2, 2),
+                                            padding=(4, 4), scale=1.05,
+                                            useMeanshiftGrouping=1)
+    x, y, w, h = rects[-1]
+    if len(rects) == 0:
+        return None
+    return (x, y, w + x, h + y), (
+        x + int(w / 3), y + int(h / 10), x + 2 * int(w / 3), y + 2 * int(h / 8))
 
 
 # Return True if bounding boxes are far apart enough
@@ -298,13 +272,17 @@ def blend_cropped_image(background_img, input_img):
 def get_result_image_from_homography(fore_image, back_image, matches, kp_fore,
                                      kp_back,
                                      col_start, col_end, left_box):
-    H, mask = calculate_homography(matches, kp_fore, kp_back)
-    warped_back = cv2.warpPerspective(back_image, H, (
-        fore_image.shape[:2][1], fore_image.shape[:2][0]))
+    if len(matches) != 0:
+        H, mask = calculate_homography(matches, kp_fore, kp_back)
+        warped_back = cv2.warpPerspective(back_image, H, (
+            fore_image.shape[:2][1], fore_image.shape[:2][0]))
+    else:
+        warped_back = back_image
     if left_box:  # figure out which is to the left of the other
         warped_back, fore_image = fore_image, warped_back
     blended_image = alpha_blend(fore_image, warped_back, col_start, col_end)
-    blended_image = crop_image(blended_image, H)
+    if len(matches) != 0:
+        blended_image = crop_image(blended_image, H)
     return blended_image
 
 
@@ -314,12 +292,19 @@ def main(img_fg, img_bg, res_fname):
     cnt = 0
     fore_image = cv2.imread(img_fg)
     back_image = cv2.imread(img_bg)
+    # out_shape = fore_image.shape
+    # print(out_shape)
+    fore_image = imutils.resize(fore_image,
+                                width=min(800, fore_image.shape[1]))
+    back_image = imutils.resize(back_image,
+                                width=min(800, back_image.shape[1]))
     # color correction
     fore_image, back_image = colorcorrect(fore_image, back_image)
     # find body bounding box
     bb_fore, bb_fore_face = find_bounding_box(fore_image)
     bb_back, bb_back_face = find_bounding_box(back_image)
-
+    fore_image = adjust_gamma(fore_image)
+    back_image = adjust_gamma(back_image)
     # swap fore and back images if necessary (fore has bigger body)
     # if swap_fore_back(bb_fore_face, bb_back_face):
     #     tmp = fore_image  # due to shallow copy
@@ -360,7 +345,9 @@ def main(img_fg, img_bg, res_fname):
                                                    matches, kp_fore,
                                                    kp_back, col_start, col_end,
                                                    left_box)
+        # res_img = cv2.resize(res_img, (out_shape[1],out_shape[0]))
         cv2.imwrite(res_fname, res_img)
+        # print(res_img.shape)
     else:
         if VERBOSE:
             print 'Image subjects too close together, need to do segmentation.'
@@ -369,4 +356,6 @@ def main(img_fg, img_bg, res_fname):
             fore_image.shape[:2][1], fore_image.shape[:2][0]))
         warped_back_cut = grab_cut.grab_cut(warped_back)
         blended_image = blend_cropped_image(fore_image, warped_back_cut)
-        cv2.imwrite(res_fname, imresize(blended_image, scale_factor))
+        res_img = imresize(blended_image, scale_factor)
+        # res_img = cv2.resize(res_img, out_shape)
+        cv2.imwrite(res_fname, res_img)
