@@ -3,7 +3,6 @@ import random
 import cv2
 import numpy as np
 import grab_cut
-import local_config as config
 import imutils
 
 from disp_utils import show_bounding_boxes, show
@@ -11,10 +10,6 @@ from process_utils import colorcorrect, imresize, adjust_gamma
 
 VERBOSE = True
 scale_factor = 1
-
-OPENCV_PATH = config.opencv['OPENCV_PATH']
-FACE_DETECTION_XML = config.opencv['FACE_DETECTION_XML']
-
 
 def find_bounding_box(img):
     """
@@ -24,8 +19,6 @@ def find_bounding_box(img):
     :return: details of the bounding box
     """
     # Seed for random ness
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
     hog = cv2.HOGDescriptor()
     hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
     (rects, weights) = hog.detectMultiScale(img, winStride=(2, 2),
