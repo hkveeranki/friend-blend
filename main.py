@@ -7,7 +7,9 @@ import imutils
 
 from disp_utils import show_bounding_boxes, show
 from process_utils import colorcorrect, imresize, adjust_gamma
+from better_bounding_box import better_bounding_box
 
+switch = True
 VERBOSE = True
 scale_factor = 1
 
@@ -294,8 +296,12 @@ def main(img_fg, img_bg, res_fname):
     # color correction
     fore_image, back_image = colorcorrect(fore_image, back_image)
     # find body bounding box
-    bb_fore, bb_fore_face = find_bounding_box(fore_image)
-    bb_back, bb_back_face = find_bounding_box(back_image)
+    if(switch):
+        bb_fore, bb_fore_face = better_bounding_box(fore_image)
+        bb_back, bb_back_face = better_bounding_box(back_image)
+    else:
+        bb_fore, bb_fore_face = find_bounding_box(fore_image)
+        bb_back, bb_back_face = find_bounding_box(back_image)    
     fore_image = adjust_gamma(fore_image)
     back_image = adjust_gamma(back_image)
     # swap fore and back images if necessary (fore has bigger body)
