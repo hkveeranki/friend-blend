@@ -129,8 +129,15 @@ def better_bounding_box(img):
     
     if flag == 1: # means face found
         imgg=copy.deepcopy(img)
+        bounding_box = []
         bounding_box= find_bounding_box_new_v(found_filtered,max_index, mxx,myy,mww,mhh,imgg)
-        return bounding_box
+        x1,y1,x2,y2 = bounding_box[0]
+        a,b,c,d = found_filtered[max_index]
+        if ((x2-x1) * (y2-y1)) < (c*d):
+            return bounding_box
+        else:
+            return return (a,c,a+b,c+d), (mxx, myy, mxx + mww, myy + mhh)
+            
     else: # return the biggest box from HoG
         index_box = 0
         max_box = 0
