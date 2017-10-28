@@ -127,7 +127,20 @@ def better_bounding_box(img):
     #now target box is found_filtered[max_index] and sure features rect is m__
     #now give this to grabcut. Remove haar from grabcut code. make sure flag is 1
     
-    if flag == 1:
+    if flag == 1: # means face found
         imgg=copy.deepcopy(img)
         bounding_box= find_bounding_box_new_v(found_filtered,max_index, mxx,myy,mww,mhh,imgg)
         return bounding_box
+    else: # return the biggest box from HoG
+        index_box = 0
+        max_box = 0
+        xx,yy,ww,hh = found_filtered[0]
+        max_area = ww*hh
+        for x,y,w,h in found_filtered:
+            areaa = w*h
+            if areaa > max_areaa:
+                max_areaa = areaa
+                max_box = index_box
+            index_box +=1
+        x,y,w,h = found_filtered[max_box]
+        return (x,y,x+w,y+h),(x + int(w / 3), y + int(h / 10), x + 2 * int(w / 3), y + 2 * int(h / 8))
