@@ -2,6 +2,10 @@ import numpy as np
 import cv2
 import sys
 import copy
+import local_config as config
+
+OPENCV_PATH = config.opencv['OPENCV_PATH']
+FACE_DETECTION_XML = config.opencv['FACE_DETECTION_XML']
 
 
 def inside(r, q):
@@ -109,7 +113,8 @@ def better_bounding_box(img):
         # apply mask
         tmp = copy.deepcopy(img)
         img1 = maskk(tmp,x,y,w,h)
-        face_cascade = cv2.CascadeClassifier("/home/vinamra/Downloads/opencv-master/" + "data/haarcascades/haarcascade_frontalface_default.xml")
+        #face_cascade = cv2.CascadeClassifier("/home/vinamra/Downloads/opencv-master/" + "data/haarcascades/haarcascade_frontalface_default.xml")(OPENCV_PATH + FACE_DETECTION_XML)
+        face_cascade = cv2.CascadeClassifier(OPENCV_PATH + FACE_DETECTION_XML)
         gray = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
         faces = face_cascade.detectMultiScale(gray, 1.3, 2)
         print len(faces)
