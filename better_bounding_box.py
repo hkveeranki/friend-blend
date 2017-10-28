@@ -11,8 +11,8 @@ def inside(r, q):
 
 def maskk(imgg,x,y,w,h):
     img2=imgg
-    for r in xrange(0,img.shape[0]):
-        for c in xrange(0,img.shape[1]):
+    for r in xrange(0,imgg.shape[0]):
+        for c in xrange(0,imgg.shape[1]):
             if c>x and c<x+w and r>y and r<y+h:
                 img2[r][c][:]=imgg[r][c][:]
             else:
@@ -103,6 +103,7 @@ def better_bounding_box(img):
     #return box and face dimentions
     index = 0
     max_area = -1
+    flag = 0
     
     for x,y,w,h in found_filtered:
         # apply mask
@@ -136,11 +137,13 @@ def better_bounding_box(img):
         if ((x2-x1) * (y2-y1)) < (c*d):
             return bounding_box
         else:
-            return return (a,c,a+b,c+d), (mxx, myy, mxx + mww, myy + mhh)
+            return (a,c,a+b,c+d), (mxx, myy, mxx + mww, myy + mhh)
             
     else: # return the biggest box from HoG
         index_box = 0
         max_box = 0
+        max_areaa = -1
+        
         xx,yy,ww,hh = found_filtered[0]
         max_area = ww*hh
         for x,y,w,h in found_filtered:
